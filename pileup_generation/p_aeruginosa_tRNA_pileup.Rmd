@@ -14,6 +14,8 @@ library(Rsamtools)
 ```{r}
 #taken from
 #https://seqqc.wordpress.com/2015/03/10/calculate-nucelotide-frequency-with-rsamtools-pileup/
+#takes Rsamtools pileup data type from Rsamtools::pileup()
+#returns dataframe of per nucleotide depths and frequencies
 pileupFreq <- function(pileupres) {
   nucleotides <- levels(pileupres$nucleotide)
   res <- split(pileupres, pileupres$seqnames)
@@ -51,7 +53,7 @@ pileupFreq <- function(pileupres) {
 ```
 
 ```{r}
-#list of tRNAs entered manually because reading from txt file gives weird results
+#list of tRNAs to generate pileups for
 list_of_experiments <- as.list(list.dirs(recursive = FALSE))
 list_of_tRNAs <- list(
   "EBT00051364934",
@@ -128,7 +130,10 @@ tRNA_lens <- seqlengths(tRNA_seqs)
 for (experiment in list_of_experiments)
 {
   all_tRNAs_list <- list()
-  pb = txtProgressBar(min=0,max = length(list_of_tRNAs),style = 1)
+  pb = txtProgressBar(min = 0,
+                      max = length(list_of_tRNAs),
+                      style = 1)
+  #progress bar style output for running on HPC
   stepi = 0
   pileup_output <- data.frame(matrix(
     ncol = 34,
@@ -177,7 +182,7 @@ for (experiment in list_of_experiments)
   for (tRNA in list_of_tRNAs)
     
   {
-    setTxtProgressBar(pb,stepi)
+    setTxtProgressBar(pb, stepi)
     tRNA_length = tRNA_lens[[tRNA]]
     tRNA_reference <-
       getSeq(tRNA_seqs, GRanges(seqnames = tRNA, IRanges(start = 1, end = tRNA_length)))
@@ -208,6 +213,7 @@ for (experiment in list_of_experiments)
       rep_file <- paste(experiment, replicate, sep = "/")
       rep_name <- str_extract(rep_file, pattern = "(?:rep.)")
       bf <- BamFile(rep_file)
+      #uses mapped & sorted .BAM file input
       rep_pileup <- pileup(
         bf,
         include_deletions = 1,
@@ -221,7 +227,7 @@ for (experiment in list_of_experiments)
       if (is.data.frame(freqs) == FALSE) {
         next
       }
-      freqs <- select(freqs,-c("-", "=", "+"))
+      freqs <- select(freqs, -c("-", "=", "+"))
       freqs$depth <- rowSums(freqs[, c("A", "C", "G", "T", "N")])
       freqs$A_freq <- freqs$A / freqs$depth
       freqs$C_freq <- freqs$C / freqs$depth
@@ -264,21 +270,36 @@ for (experiment in list_of_experiments)
     output_df <- output_df %>%
       mutate(total_depth = rowSums(select(output_df, starts_with("depth"))))
     output_df <- output_df %>%
-      mutate(
-        misincorporation_freq = case_when(total_depth == 0 ~ 0,
-                                          TRUE ~ misincorporation_freq)
-      )
+      mutate(misincorporation_freq = case_when(total_depth == 0 ~ 0,
+                                               TRUE ~ misincorporation_freq))
     pileup_output <- rbind.fill(pileup_output, output_df)
     stepi = stepi + 1
   }
   print(paste(exp_name, "finished"))
-  raw_output_name <- paste(exp_name, "collated_freqs.csv", sep = "_")
-  summary_output_name <- paste(exp_name, "summary_freqs.csv", sep = "_")
+  raw_output_name <-
+    paste(exp_name, "collated_freqs.csv", sep = "_")
+  summary_output_name <-
+    paste(exp_name, "summary_freqs.csv", sep = "_")
   pileup_output <- pileup_output %>% replace(is.na(.), 0)
-  raw_pileup_output <- pileup_output[, c(1,41,35,29,18,7,42,43,2:6,8:17,19:28,30:34,36:40)]
-  summary_pileup_output <- pileup_output[,c("tRNA_index","ref_base","misincorporation_freq","avg_depth","A_avg_freq", "C_avg_freq", "G_avg_freq", "T_avg_freq", "N_avg_freq", "total_depth")]
+  raw_pileup_output <-
+    pileup_output[, c(1, 41, 35, 29, 18, 7, 42, 43, 2:6, 8:17, 19:28, 30:34, 36:40)]
+  summary_pileup_output <-
+    pileup_output[, c(
+      "tRNA_index",
+      "ref_base",
+      "misincorporation_freq",
+      "avg_depth",
+      "A_avg_freq",
+      "C_avg_freq",
+      "G_avg_freq",
+      "T_avg_freq",
+      "N_avg_freq",
+      "total_depth"
+    )]
   colnames(raw_pileup_output) <-
-    paste(colnames(raw_pileup_output), as.character(experiment), sep = "_")
+    paste(colnames(raw_pileup_output),
+          as.character(experiment),
+          sep = "_")
   write.csv(raw_pileup_output, raw_output_name)
   write.csv(summary_pileup_output, summary_output_name)
 }

@@ -1,19 +1,13 @@
----
-title: "s4U e coli"
-output: html_notebook
----
-
-```{r}
-setwd("") #working directory containing reference.fa, reference.fai, and subfolders for each condition containing replicate BAMs + indexes
+setwd("<data_directory>") #working directory containing reference.fa, reference.fai, and subfolders for each condition containing replicate BAMs + indexes
 library(data.table)
 library(plyr)
 library(tidyverse)
 library(Rsamtools)
-```
 
-```{r}
 #taken from
 #https://seqqc.wordpress.com/2015/03/10/calculate-nucelotide-frequency-with-rsamtools-pileup/
+#takes Rsamtools pileup data type from Rsamtools::pileup()
+#returns dataframe of per nucleotide depths and frequencies
 pileupFreq <- function(pileupres) {
   nucleotides <- levels(pileupres$nucleotide)
   res <- split(pileupres, pileupres$seqnames)
@@ -48,91 +42,43 @@ pileupFreq <- function(pileupres) {
   res[3:ncol(res)] <- apply(res[3:ncol(res)], 2, as.numeric)
   res
 }
-```
 
-```{r}
-#list of tRNAs entered manually because reading from txt file gives weird results
+#list of transcripts to generate pileups for
 list_of_experiments <- as.list(list.dirs(recursive = FALSE))
-list_of_tRNAs <- list(
-  "EBT00001514602",
-  "EBT00001514709",
-  "EBT00001514730",
-  "EBT00001514592",
-  "EBT00001514597",
-  "EBT00001514651",
-  "EBT00001514737",
-  "EBT00001514641",
-  "EBT00001514729",
-  "EBT00001514671",
-  "EBT00001514747",
-  "EBT00001514584",
-  "EBT00001514637",
-  "EBT00001514734",
-  "EBT00001514740",
-  "EBT00001514723",
-  "EBT00001514621",
-  "EBT00001514583",
-  "EBT00001514711",
-  "EBT00001514691",
-  "EBT00001514593",
-  "EBT00001514638",
-  "EBT00001514735",
-  "EBT00001514690",
-  "EBT00001514678",
-  "EBT00001514749",
-  "EBT00001514632",
-  "EBT00001514591",
-  "EBT00001514707",
-  "EBT00001514598",
-  "EBT00001514612",
-  "EBT00001514721",
-  "EBT00001514699",
-  "EBT00001514738",
-  "EBT00001514679",
-  "EBT00001514719",
-  "EBT00001514636",
-  "EBT00001514622",
-  "EBT00001514635",
-  "EBT00001514689",
-  "EBT00001514652",
-  "EBT00001514733",
-  "EBT00001514627",
-  "EBT00001514732",
-  "EBT00001514676",
-  "EBT00001514624",
-  "EBT00001514743"
-)
+list_of_transcripts <- list()
+#setting parameters for pileup
 p_param <-
   PileupParam(
     max_depth = 1000000,
     distinguish_strands = TRUE,
     min_nucleotide_depth = 0
   )
-tRNA_seqs <-
-  open(
-    FaFile(
-      "ecoli_transcriptome_uniquetRNA.fa",
-      "ecoli_transcriptome_uniquetRNA.fa.fai"
-    )
-  )
-tRNA_lens <- seqlengths(tRNA_seqs)
-```
+#open and read transcriptome reference
+reference_seqs <-
+  open(FaFile(
+    "<reference_transcriptome>.fa",
+    "<reference_transcriptome>.fa.fai"
+  ))
+transcript_lengths <- seqlengths(reference_seqs)
 
-```{r}
-#performs pileup for each tRNA for each experimental condition across replicates
+#performs pileup for each transcript for each experimental condition across replicates
 #indexes experiment folders
 #creates summary dataframe
-#iterates through set list of tRNAs
-#for every tRNA, gets a reference of positions and bases from index files
+#iterates through set list of transcripts
+#for every transcript, gets a reference of positions and bases from index files
 #indexes replicates
-#performs pileup per experiment per tRNA per replicate
-#assembles replicates horizontally, joined on tRNA index to reference
-#final metrics are calculated per tRNA
-#each tRNA is assembled vertically into the final format
+#performs pileup per experiment per transcript per replicate
+#assembles replicates horizontally, joined on transcript index to reference
+#final metrics are calculated per transcript
+#each transcript is assembled vertically into the final output
+
 for (experiment in list_of_experiments)
 {
-  all_tRNAs_list <- list()
-  pb = txtProgressBar(min=0,max = length(list_of_tRNAs),style = 1)
+  list_of_transcripts <- list()
+  pb = txtProgressBar(min = 0,
+                      max = length(list_of_tRNAs),
+                      style = 1)
+  #progress bar style output for running on HPC
   stepi = 0
   pileup_output <- data.frame(matrix(
     ncol = 34,
@@ -140,7 +86,7 @@ for (experiment in list_of_experiments)
     dimnames = list(
       NULL,
       c(
-        "tRNA_index",
+        "transcript_index",
         "A_rep1",
         "C_rep1",
         "G_rep1",
@@ -178,31 +124,33 @@ for (experiment in list_of_experiments)
     )
   ))
   
-  for (tRNA in list_of_tRNAs)
+  for (transcript in list_of_transcripts)
     
   {
-    setTxtProgressBar(pb,stepi)
-    tRNA_length = tRNA_lens[[tRNA]]
-    tRNA_reference <-
-      getSeq(tRNA_seqs, GRanges(seqnames = tRNA, IRanges(start = 1, end = tRNA_length)))
+    setTxtProgressBar(pb, stepi)
+    transcript_len = transcript_lengths[[transcript]]
+    transcript_reference <-
+      getSeq(reference_seqs, GRanges(seqnames = transcript, IRanges(start = 1, end = transcript_len)))
     reference_dataframe <-
       data.frame(ref_base = unlist(strsplit(
-        as.character(tRNA_reference, use.names = FALSE), split = ""
+        as.character(transcript_reference, use.names = FALSE),
+        split = ""
       )[[1]]))
-    reference_dataframe$tRNA_index <- 1:nrow(reference_dataframe)
-    reference_dataframe$tRNA_index <-
-      lapply(reference_dataframe$tRNA_index, function(x)
-        paste(names(tRNA_reference), x, sep = "_"))
-    reference_dataframe = reference_dataframe[, c("tRNA_index", "ref_base")]
+    reference_dataframe$transcript_index <-
+      1:nrow(reference_dataframe)
+    reference_dataframe$transcript_index <-
+      lapply(reference_dataframe$transcript_index, function(x)
+        paste(names(transcript_index), x, sep = "_"))
+    reference_dataframe = reference_dataframe[, c("transcript_index", "ref_base")]
     reference_dataframe <-
-      reference_dataframe %>% mutate(tRNA_index = as.character(tRNA_index))
+      reference_dataframe %>% mutate(transcript_index = as.character(transcript_index))
     exp_name <- substring(experiment, 3)
     replicate_files <- as.list(list.files(
       path = experiment,
       no.. = TRUE,
       pattern = "(?:.bam$)"
     ))
-    param <- ScanBamParam(which = GRanges(tRNA,
+    param <- ScanBamParam(which = GRanges(transcript,
                                           IRanges(start = 0,
                                                   end = 1000)))
     output_list <- list()
@@ -225,7 +173,7 @@ for (experiment in list_of_experiments)
       if (is.data.frame(freqs) == FALSE) {
         next
       }
-      freqs <- select(freqs,-c("-", "=", "+"))
+      freqs <- select(freqs, -c("-", "=", "+"))
       freqs$depth <- rowSums(freqs[, c("A", "C", "G", "T", "N")])
       freqs$A_freq <- freqs$A / freqs$depth
       freqs$C_freq <- freqs$C / freqs$depth
@@ -235,13 +183,13 @@ for (experiment in list_of_experiments)
       colnames(freqs) <- paste(colnames(freqs), rep_name, sep = "_")
       ref = paste("seqnames", rep_name, sep = "_")
       pos = paste("start", rep_name, sep = "_")
-      freqs <- unite(freqs, "tRNA_index", c(ref, pos))
+      freqs <- unite(freqs, "transcript_index", c(ref, pos))
       output_list <- append(list(freqs), output_list)
     }
     #https://stackoverflow.com/a/49346473
     no_of_reps_with_reads <- length(output_list) - 1
     output_df <-
-      output_list %>% purrr::reduce(dplyr::full_join, by = 'tRNA_index')
+      output_list %>% purrr::reduce(dplyr::full_join, by = 'transcript_index')
     output_df <- output_df %>% replace(is.na(.), 0)
     output_df <- output_df %>%
       mutate(A_avg_freq = rowSums(select(output_df, starts_with("A_freq"))) / no_of_reps_with_reads)
@@ -264,26 +212,40 @@ for (experiment in list_of_experiments)
         )
       )
     output_df <- output_df %>%
-      mutate(avg_depth = rowSums(select(output_df, starts_with("depth_"))) / no_of_reps_with_reads)
+      mutate(avg_depth = rowSums(select(output_df, starts_with("depth"))) / no_of_reps_with_reads)
     output_df <- output_df %>%
       mutate(total_depth = rowSums(select(output_df, starts_with("depth"))))
     output_df <- output_df %>%
-      mutate(
-        misincorporation_freq = case_when(total_depth == 0 ~ 0,
-                                          TRUE ~ misincorporation_freq)
-      )
+      mutate(misincorporation_freq = case_when(total_depth == 0 ~ 0,
+                                               TRUE ~ misincorporation_freq))
     pileup_output <- rbind.fill(pileup_output, output_df)
     stepi = stepi + 1
   }
   print(paste(exp_name, "finished"))
-  raw_output_name <- paste(exp_name, "collated_freqs.csv", sep = "_")
-  summary_output_name <- paste(exp_name, "summary_freqs.csv", sep = "_")
+  raw_output_name <-
+    paste(exp_name, "collated_freqs.csv", sep = "_")
+  summary_output_name <-
+    paste(exp_name, "summary_freqs.csv", sep = "_")
   pileup_output <- pileup_output %>% replace(is.na(.), 0)
-  raw_pileup_output <- pileup_output[, c(1,41,35,29,18,7,42,43,2:6,8:17,19:28,30:34,36:40)]
-  summary_pileup_output <- pileup_output[,c("tRNA_index","ref_base","misincorporation_freq","avg_depth","A_avg_freq", "C_avg_freq", "G_avg_freq", "T_avg_freq", "N_avg_freq", "total_depth")]
+  raw_pileup_output <-
+    pileup_output[, c(1, 41, 35, 29, 18, 7, 42, 43, 2:6, 8:17, 19:28, 30:34, 36:40)]
+  summary_pileup_output <-
+    pileup_output[, c(
+      "transcript_index",
+      "ref_base",
+      "misincorporation_freq",
+      "avg_depth",
+      "A_avg_freq",
+      "C_avg_freq",
+      "G_avg_freq",
+      "T_avg_freq",
+      "N_avg_freq",
+      "total_depth"
+    )]
   colnames(raw_pileup_output) <-
-    paste(colnames(raw_pileup_output), as.character(experiment), sep = "_")
+    paste(colnames(raw_pileup_output),
+          as.character(experiment),
+          sep = "_")
   write.csv(raw_pileup_output, raw_output_name)
   write.csv(summary_pileup_output, summary_output_name)
 }
-```

@@ -3,18 +3,18 @@ Analysis and figures for the 4-thiouridine project
 
 Packages / libraries used
 
-Samtools
+Samtools 1.17
 
-bowtie2
+bowtie2 2.5.1 
 
-gnu parallel (need to cite this)
+gnu parallel 20230222 (need to cite this in manuscript) 
 
 awk
 
-Rsamtools
+Rsamtools 2.12.0
 
-tidyverse
+tidyverse 2.0.0
 
-plyr
+plyr 1.8.8
 
-data.table
+data.table 1.14.8
