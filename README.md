@@ -18,3 +18,11 @@ tidyverse 2.0.0
 plyr 1.8.8
 
 data.table 1.14.8
+
+reshape2 1.4.4
+
+corrplot 0.92
+
+viridis 0.6.2
+
+ggplot2 3.4.1
